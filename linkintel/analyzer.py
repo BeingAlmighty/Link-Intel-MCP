@@ -401,10 +401,12 @@ def _clean_anchor_text(text: str) -> str:
     return " ".join(words[:5]) if words else ""
 
 def generate_anchor(page: dict, entities: list) -> str:
-    for cand in [(page.get("H1-1", "") or ""), (page.get("Title 1", "") or "")]:
+    for cand in [(page.get("Title 1", "") or ""), (page.get("H1-1", "") or "")]:
         cand = re.split(r'\s[|\-]\s', cand)[0].strip()
         c = _clean_anchor_text(cand)
         if c and c not in GENERIC_ANCHORS and len(c) > 3:
+            if "logo" in c.lower() or len(c.split()) < 2:
+                continue
             return c
             
     u = _norm(page.get("Address", ""))
@@ -413,7 +415,11 @@ def generate_anchor(page: dict, entities: list) -> str:
         slug = path.split("/")[-1].replace("-", " ").replace("_", " ")
         c = _clean_anchor_text(slug)
         if c and c not in GENERIC_ANCHORS and len(c) > 3:
-            return c
+            if "logo" in c.lower() or len(c.split()) < 2:
+                pass
+            else:
+                return c
+            
             
     if entities:
         return " ".join(entities[:2])
