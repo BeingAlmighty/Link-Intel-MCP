@@ -48,7 +48,7 @@ def call_llm_batched(prompt: str, agent_file: str) -> dict | None:
             data=json.dumps(req_body).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=300.0) as response:
+        with urllib.request.urlopen(req, timeout=None) as response:
             res = json.loads(response.read().decode("utf-8"))
             resp_str = res.get("response", "{}")
             
