@@ -42,7 +42,7 @@ recommendations**. It serves a live dashboard at localhost:7700 and outputs
 - ...
 
 ## Implementation Summary
-- Maintained deterministic engine (nalyzer.py) as source-of-truth.
-- Injected call_llm_batched into un.py to seamlessly orchestrate Model inference (Topic and Linker agents) while catching all urllib errors for a 100% stable offline fallback.
+- Maintained deterministic engine (`analyzer.py`) as source-of-truth.
+- Injected `call_llm_batched` into `run.py` to seamlessly orchestrate Model inference (Topic and Linker agents) while catching all `urllib` errors for a 100% stable offline fallback.
 - Batched entity refinement, cluster naming, and anchor context generation.
-- Squashed critical graph_stats bug to correctly reject external domains from internal arrays.
+- Squashed critical `graph_stats` bug to correctly reject external domains from internal arrays.
