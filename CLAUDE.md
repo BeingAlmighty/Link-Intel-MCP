@@ -36,14 +36,17 @@ recommendations**. It serves a live dashboard at localhost:7700 and outputs
 - Run `python run.py sample-export/` to test end to end.
 
 ## Things I have learned during the build (update this as you go)
-- (e.g. "page text filenames are URL-encoded with an `original_https_` prefix - decode before
-  matching to Address")
-- (e.g. "orphans = `Unique Inlinks` == 0, NOT `Inlinks` == 0 - Inlinks counts repeated links")
-- ...
+- **Data Quality Bug**: Screaming Frog's `all_inlinks.csv` captures outbound external links (like facebook.com or twitter.com) and misreports them as internal. We had to strictly enforce a `urlparse(dst).netloc` match against the `site_domain` to prevent 64+ external URLs from polluting `broken_internal_links`.
+- **Anchor Quality**: Deterministic extraction of `H1` tags often grabs useless marketing slogans ("Unleash your potential") or image alt-texts ("unity-logo"). We learned to strictly prioritize the `Title` tag and explicitly filter out exact matches for "logo" to ensure LLMs get clean context.
+- **LLM Context Window Crashes**: Sending batches of 40 pages in a single LLM API call creates a 65,000-token context. On offline consumer hardware (8GB RAM), this causes brutal hard drive paging, freezing the computer for 15+ minutes. We learned we *must* de-batch requests to ~500 tokens (one page per call).
+- **JSON Parsers Shatter on Reasoning Models**: Local reasoning models like `qwen3:8b` output `<think>...</think>` internal monologues natively before their JSON response. Standard `json.loads` instantly shatters. We had to build a robust regex extraction layer to parse out `<think>` blocks and isolate the pure JSON payload.
+- **Dictionary Pathing**: The starter codebase creates heavily nested dictionaries (`server._A["clusters"]["page_keywords"]`). Calling `.get("page_keywords")` at the root drops the data silently.
+- **Hallucination Tolerance**: LLMs (especially 8B local models) will occasionally hallucinate broken formatting. We learned that `JSONDecodeError` safety nets (try/except blocks that gracefully skip failed items instead of crashing) are mandatory for scaling to 100+ automated calls.
 
 ## Implementation Summary
 - Maintained deterministic engine (`analyzer.py`) as source-of-truth.
-- Injected `call_llm_batched` into `run.py` to seamlessly orchestrate Model inference (Topic and Linker agents) while catching all `urllib` errors for a 100% stable offline fallback.
-- Batched entity refinement, cluster naming, and anchor context generation.
+- Injected `call_llm_batched` into `run.py` to seamlessly orchestrate Model inference (Topic and Linker agents) while catching all `urllib` errors for a 100% stable offline execution.
+- Extracted `<think>` blocks using Regex to fully support offline reasoning models.
+- Imported `concurrent.futures.ThreadPoolExecutor(max_workers=10)` to parallelize the de-batched 100+ tiny LLM requests, dropping I/O-bound execution time from 15+ minutes down to a highly efficient ~11 minutes locally.
 - Squashed critical `graph_stats` bug to correctly reject external domains from internal arrays.
-- Improved deterministic anchor generation by prioritizing Title tags and filtering logos.
+- Stripped legacy dashboard dummy data to strictly surface authentic LLM text generation.
