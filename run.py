@@ -92,18 +92,30 @@ def main():
     server.RUN["model_calls"] = 0
     server.RUN_INTERNAL = {"clusters_named": 0, "entities_refined": 0, "anchors_generated": 0}
 
+    import concurrent.futures
+
     # Phase 2: Cluster Refinement
     cl = server._A.get("clusters", {}).get("clusters", [])
     names_res = {}
-    for c in cl:
-        keywords = c.get("keywords", [])[:5]
-        if keywords:
-            prompt = f"Name this cluster in 1-3 words. Return ONLY a JSON dictionary mapping the key 'name' to the string name. keywords={json.dumps(keywords)}"
+    
+    def process_cluster(c):
+        kw = c.get("keywords", [])[:5]
+        if kw:
+            prompt = f"Name this cluster in 1-3 words. Return ONLY a JSON dictionary mapping the key 'name' to the string name. keywords={json.dumps(kw)}"
             res = call_llm_batched(prompt, "topic-agent.md")
             if res and isinstance(res, dict) and "name" in res:
-                names_res[c["key"]] = res["name"]
+                return c["key"], res["name"]
+        return None, None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_cluster, c): c for c in cl}
+        for future in concurrent.futures.as_completed(futures):
+            k, v = future.result()
+            if k:
+                names_res[k] = v
                 server.RUN["model_calls"] += 1
                 server.RUN_INTERNAL["clusters_named"] += 1
+
     if names_res:
         server.li_topics(names=names_res)
 
@@ -116,34 +128,52 @@ def main():
     top_urls = sorted(inl, key=lambda u: -inl[u])[:40]
     
     full_entities = dict(server._A.get("page_keywords", {}))
-    for u in top_urls:
-        kw = full_entities.get(u, [])
+    
+    def process_entity(u, kw):
         if kw:
             prompt = f"Refine these entity lists to exactly 5-10 clean entities. Return ONLY a JSON dictionary mapping the key 'entities' to an array of strings. keywords={json.dumps(kw)}"
             res = call_llm_batched(prompt, "topic-agent.md")
             if res and isinstance(res, dict) and "entities" in res:
-                full_entities[u] = res["entities"]
+                return u, res["entities"]
+        return None, None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_entity, u, full_entities.get(u, [])): u for u in top_urls}
+        for future in concurrent.futures.as_completed(futures):
+            k, v = future.result()
+            if k:
+                full_entities[k] = v
                 server.RUN["model_calls"] += 1
                 server.RUN_INTERNAL["entities_refined"] += 1
+
     server.li_entities(entities=full_entities)
 
     # Phase 4: Anchor Refinement
     flat_recs = []
     for blk in server._A.get("link_candidates", []):
         for c in blk["candidates"]:
-            rec = {
+            flat_recs.append({
                 "source": blk["source"],
                 "target": c["target"],
                 "relatedness": c["relatedness"],
                 "reason": c.get("reason", ""),
                 "suggested_anchor": c.get("suggested_anchor", "")
-            }
-            flat_recs.append(rec)
+            })
             
-            prompt = f"Write specific, contextual anchor text (3-7 words) for this internal link. Use the reason and deterministic anchor as hints. Return ONLY a JSON dictionary mapping the key 'anchor' to the string. reason={json.dumps(rec['reason'])}, deterministic_anchor={json.dumps(rec['suggested_anchor'])}"
-            res = call_llm_batched(prompt, "linker-agent.md")
-            if res and isinstance(res, dict) and "anchor" in res:
-                rec["suggested_anchor"] = res["anchor"]
+    def process_anchor(rec):
+        prompt = f"Write specific, contextual anchor text (3-7 words) for this internal link. Use the reason and deterministic anchor as hints. Return ONLY a JSON dictionary mapping the key 'anchor' to the string. reason={json.dumps(rec['reason'])}, deterministic_anchor={json.dumps(rec['suggested_anchor'])}"
+        res = call_llm_batched(prompt, "linker-agent.md")
+        if res and isinstance(res, dict) and "anchor" in res:
+            return res["anchor"]
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_anchor, rec): rec for rec in flat_recs}
+        for future in concurrent.futures.as_completed(futures):
+            rec = futures[future]
+            v = future.result()
+            if v:
+                rec["suggested_anchor"] = v
                 server.RUN["model_calls"] += 1
                 server.RUN_INTERNAL["anchors_generated"] += 1
             
