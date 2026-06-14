@@ -127,7 +127,7 @@ def main():
     inl = {server.analyzer._norm(p["Address"]): server.analyzer._int(p.get("Unique Inlinks")) for p in idx200}
     top_urls = sorted(inl, key=lambda u: -inl[u])[:40]
     
-    full_entities = dict(server._A.get("page_keywords", {}))
+    full_entities = dict(server._A.get("clusters", {}).get("page_keywords", {}))
     
     def process_entity(u, kw):
         if kw:
