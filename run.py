@@ -69,7 +69,7 @@ def call_llm_batched(prompt: str, agent_file: str) -> dict | None:
             print(".", end="", flush=True)        
             return json.loads(resp_str)
     except Exception as e:
-        print(f"[li] LLM timeout or error ({type(e).__name__}). Using offline deterministic fallback data.", flush=True)
+        print(f"[li] LLM timeout or error ({type(e).__name__}).", flush=True)
         return None
 
 def main():

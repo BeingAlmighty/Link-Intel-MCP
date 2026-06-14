@@ -135,14 +135,7 @@ def _report_obj() -> dict:
     g = _A["graph_stats"]; a = _A["anchors"]; cl = _A["clusters"]["clusters"]
     recs = _A.get("final_recs")
     if recs is None:
-        # starter fallback: surface raw candidates (no anchors) so the contract holds
         recs = []
-        for blk in _A.get("link_candidates", []):
-            for c in blk["candidates"]:
-                recs.append({"source": blk["source"], "target": c["target"],
-                             "suggested_anchor": c.get("suggested_anchor"),
-                             "relatedness": c["relatedness"],
-                             "reason": c.get("reason", "shared topics: " + ", ".join(c.get("shared_topics", [])))})
     summary = {
         "pages_crawled": g["pages_total"],
         "indexable_pages": g["pages_indexable"],
