@@ -93,14 +93,18 @@ def main():
 
     # Phase 2: Cluster Refinement
     cl = server._A.get("clusters", {}).get("clusters", [])
-    clusters_batch = {c["key"]: c.get("keywords", [])[:5] for c in cl}
-    if clusters_batch:
-        prompt = f"Name these clusters in 1-3 words. Return ONLY a JSON dictionary mapping keys to strings. clusters={json.dumps(clusters_batch)}"
-        res = call_llm_batched(prompt, "topic-agent.md")
-        if res and isinstance(res, dict):
-            server.RUN["model_calls"] += 1
-            server.RUN_INTERNAL["clusters_named"] = len(res)
-            server.li_topics(names=res)
+    names_res = {}
+    for c in cl:
+        keywords = c.get("keywords", [])[:5]
+        if keywords:
+            prompt = f"Name this cluster in 1-3 words. Return ONLY a JSON dictionary mapping the key 'name' to the string name. keywords={json.dumps(keywords)}"
+            res = call_llm_batched(prompt, "topic-agent.md")
+            if res and isinstance(res, dict) and "name" in res:
+                names_res[c["key"]] = res["name"]
+                server.RUN["model_calls"] += 1
+                server.RUN_INTERNAL["clusters_named"] += 1
+    if names_res:
+        server.li_topics(names=names_res)
 
     server.li_entities()
 
@@ -110,50 +114,37 @@ def main():
     inl = {server.analyzer._norm(p["Address"]): server.analyzer._int(p.get("Unique Inlinks")) for p in idx200}
     top_urls = sorted(inl, key=lambda u: -inl[u])[:40]
     
-    entities_batch = {}
+    full_entities = dict(server._A.get("page_keywords", {}))
     for u in top_urls:
-        kw = server._A.get("page_keywords", {}).get(u, [])
+        kw = full_entities.get(u, [])
         if kw:
-            entities_batch[u] = kw
-            
-    if entities_batch:
-        prompt = f"Refine these entity lists to exactly 5-10 clean entities. Return ONLY a JSON dictionary mapping url strings to an array of string entities. urls={json.dumps(entities_batch)}"
-        res = call_llm_batched(prompt, "topic-agent.md")
-        if res and isinstance(res, dict):
-            server.RUN["model_calls"] += 1
-            server.RUN_INTERNAL["entities_refined"] = len(res)
-            full_entities = dict(server._A.get("page_keywords", {}))
-            full_entities.update(res)
-            server.li_entities(entities=full_entities)
+            prompt = f"Refine these entity lists to exactly 5-10 clean entities. Return ONLY a JSON dictionary mapping the key 'entities' to an array of strings. keywords={json.dumps(kw)}"
+            res = call_llm_batched(prompt, "topic-agent.md")
+            if res and isinstance(res, dict) and "entities" in res:
+                full_entities[u] = res["entities"]
+                server.RUN["model_calls"] += 1
+                server.RUN_INTERNAL["entities_refined"] += 1
+    server.li_entities(entities=full_entities)
 
     # Phase 4: Anchor Refinement
-    recs_batch = {}
     flat_recs = []
     for blk in server._A.get("link_candidates", []):
         for c in blk["candidates"]:
-            flat_recs.append({
+            rec = {
                 "source": blk["source"],
                 "target": c["target"],
                 "relatedness": c["relatedness"],
                 "reason": c.get("reason", ""),
                 "suggested_anchor": c.get("suggested_anchor", "")
-            })
-            key = f"{blk['source']}->{c['target']}"
-            recs_batch[key] = {
-                "reason": c.get("reason", ""),
-                "deterministic_anchor": c.get("suggested_anchor", "")
             }
+            flat_recs.append(rec)
             
-    if recs_batch:
-        prompt = f"Write specific, contextual anchor text (3-7 words) for these internal links. Use the reason and deterministic anchor as hints. Return ONLY a JSON dictionary mapping keys to strings. keys={json.dumps(recs_batch)}"
-        res = call_llm_batched(prompt, "linker-agent.md")
-        if res and isinstance(res, dict):
-            server.RUN["model_calls"] += 1
-            server.RUN_INTERNAL["anchors_generated"] = len(res)
-            for r in flat_recs:
-                key = f"{r['source']}->{r['target']}"
-                if key in res:
-                    r["suggested_anchor"] = res[key]
+            prompt = f"Write specific, contextual anchor text (3-7 words) for this internal link. Use the reason and deterministic anchor as hints. Return ONLY a JSON dictionary mapping the key 'anchor' to the string. reason={json.dumps(rec['reason'])}, deterministic_anchor={json.dumps(rec['suggested_anchor'])}"
+            res = call_llm_batched(prompt, "linker-agent.md")
+            if res and isinstance(res, dict) and "anchor" in res:
+                rec["suggested_anchor"] = res["anchor"]
+                server.RUN["model_calls"] += 1
+                server.RUN_INTERNAL["anchors_generated"] += 1
             
     server.li_set_recommendations(flat_recs)
     
