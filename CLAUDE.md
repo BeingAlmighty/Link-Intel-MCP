@@ -46,3 +46,4 @@ recommendations**. It serves a live dashboard at localhost:7700 and outputs
 - Injected `call_llm_batched` into `run.py` to seamlessly orchestrate Model inference (Topic and Linker agents) while catching all `urllib` errors for a 100% stable offline fallback.
 - Batched entity refinement, cluster naming, and anchor context generation.
 - Squashed critical `graph_stats` bug to correctly reject external domains from internal arrays.
+- Improved deterministic anchor generation by prioritizing Title tags and filtering logos.
