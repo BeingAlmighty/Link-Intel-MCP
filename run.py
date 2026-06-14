@@ -65,7 +65,8 @@ def call_llm_batched(prompt: str, agent_file: str) -> dict | None:
                 end = resp_str.rfind('}')
                 if start != -1 and end != -1:
                     resp_str = resp_str[start:end+1]
-                    
+            
+            print(".", end="", flush=True)        
             return json.loads(resp_str)
     except Exception as e:
         print(f"[li] LLM timeout or error ({type(e).__name__}). Using offline deterministic fallback data.", flush=True)
